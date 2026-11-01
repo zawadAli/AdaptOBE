@@ -4,6 +4,62 @@ All notable changes to AdaptOBE are recorded here, most recent first. Each
 entry is a short summary of what changed, not a full diff — see git history
 for that.
 
+## 2026-11-01 — AdaptOBE Assistant (chatbot), designed against prompt injection
+
+A chat assistant available to every signed-in role, from a floating button on
+every page except login. It uses the Groq API with the same
+`openai/gpt-oss-120b` model and lazy client pattern as `clo_generator.py`.
+
+- **Phase 1, help:** answers "how do I…" and OBE-concept questions from 23
+  reviewed help articles (`app/core/help_docs.py`), each tagged with the roles
+  allowed to see it. Retrieval reuses the existing `all-MiniLM-L6-v2`
+  embeddings (`help_service.py`); each article is encoded once and cached.
+- **Phase 2, data:** answers questions about the user's own data through six
+  read-only tools (`chat_tools.py`). Students get `get_my_progress` and
+  `get_my_scores`. Faculty get `list_my_courses`, `get_course_attainment`,
+  `list_course_assessments` and `get_course_risk`. Admins get help only.
+- **Security model.** Prompt injection can't be fully prevented with prompt
+  wording, so it is contained by architecture:
+  - The model never touches the DB or writes SQL. It can only call
+    allowlisted tools, and every tool is read-only and wraps an existing
+    service.
+  - Identity comes from the JWT. No tool takes a user or student id, so
+    "show me student 42" can't even be expressed.
+  - The role is re-checked when a tool runs, not just when tools are offered.
+    A jailbroken model that emits a forbidden call gets a refusal back as data.
+  - Course codes are resolved only among the caller's own courses. Someone
+    else's course reads exactly like one that doesn't exist.
+  - The only model-supplied argument (a course code) is regex-validated.
+  - Help text and tool results are fenced as untrusted data, with any
+    fence-breakout attempts defused.
+  - Client history may only contain user/assistant turns. Forged
+    `system`/`tool` turns get a 422.
+  - Limits: 1000-char messages, 10 history turns, at most 3 tool rounds, a
+    reply length cap, and 20 messages per user per 5 minutes (429). The rate
+    limit is in-memory, which is correct for this single-process deployment.
+  - Data sent to Groq is minimised to codes, titles and percentages. Students
+    are identified to faculty by seat number only, never by email.
+  - The frontend renders only **bold** and lists, as React elements with no
+    `dangerouslySetInnerHTML`, so a reply can't inject HTML or scripts.
+  - Upstream errors are logged server-side, not echoed to the user.
+- **Resilience:** if Groq is down or no key is set, the assistant returns the
+  matching help articles instead (`degraded: true`), so the help side still
+  works.
+- **Startup warm-up:** `main.py`'s lifespan now loads the embedding model and
+  encodes the help articles in a background task. Boot doesn't wait, and the
+  first chat (or CLO-mapping) request dropped from ~35s to ~3s.
+- **Endpoint:** `POST /api/v1/chat` (all roles). Frontend:
+  `components/chat/ChatWidget.jsx` + `ChatText.jsx`, mounted in `App.jsx`. It
+  is a docked card on desktop and a full-height sheet on phones, with
+  role-specific suggested questions.
+- **Tests:** `test_chat_guard.py` (pure rules), `test_chat_tools.py` (the tool
+  boundary, written as a manipulated model trying forbidden calls, forged ids,
+  injected codes and other instructors' courses), and `test_chat.py`
+  (end-to-end with a scripted fake LLM, including a simulated jailbreak, a
+  bounded tool loop, 429/422 handling and degraded fallback). Also verified
+  live against Groq: a help question, a tool-backed data question, and an
+  injection attempt, which was refused.
+
 ## 2026-08-19 — Attendance count, drag-and-drop reordering, seat-no data fix, Upload Assessment Paper
 
 Four independent faculty-facing additions.

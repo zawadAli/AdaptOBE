@@ -16,3 +16,7 @@ class ValidationError(Exception):
 
 class LLMGenerationError(Exception):
     """Raised when an external LLM call fails or returns unusable output."""
+
+
+class RateLimitError(Exception):
+    """Raised when a user exceeds a per-user request quota (e.g. the chatbot)."""

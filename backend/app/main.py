@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -12,6 +13,7 @@ from app.routers import (
     attainment,
     attendance,
     auth,
+    chat,
     courses,
     departments,
     enrollments,
@@ -25,13 +27,18 @@ from app.routers import (
     users,
     ws,
 )
-from app.services import notifications
+from app.services import help_service, notifications
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     notifications.subscribe(ws.forward_to_websockets)
+    # Load the embedding model and encode the assistant's help articles in the
+    # background: boot doesn't wait, and the first chat question (or CLO
+    # mapping request) doesn't pay the ~20s model start-up.
+    warm_up = asyncio.create_task(help_service.warm_up())
     yield
+    warm_up.cancel()
     notifications.unsubscribe(ws.forward_to_websockets)
 
 
@@ -61,6 +68,7 @@ app.include_router(attainment.router)
 app.include_router(attendance.router)
 app.include_router(ml.router)
 app.include_router(student.router)
+app.include_router(chat.router)
 app.include_router(ws.router)
 
 

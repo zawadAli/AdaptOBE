@@ -8,6 +8,7 @@ import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
 import AssessmentDetailPage from './pages/AssessmentDetailPage'
 import StudentDashboardPage from './pages/StudentDashboardPage'
+import ChatWidget from './components/chat/ChatWidget'
 import Spinner from './components/ui/Spinner'
 
 function HomeRedirect() {
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="*" element={<HomeRedirect />} />
         </Routes>
+        <ChatWidget />
       </AuthProvider>
     </BrowserRouter>
   )
