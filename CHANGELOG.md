@@ -4,6 +4,43 @@ All notable changes to AdaptOBE are recorded here, most recent first. Each
 entry is a short summary of what changed, not a full diff — see git history
 for that.
 
+## 2026-11-01 — Hardcoded curriculum catalog for course creation
+
+"+ New Course" now defaults to picking from the department's scheme of studies
+instead of typing every field.
+
+- **Catalog** (`app/core/curriculum.py`): every course in the BSCS, BSSE and BSAI
+  semester-wise plans, transcribed from the curriculum documents, with code,
+  name, credit hours, theory+lab split and semester. That is 175 entries,
+  including the domain-elective pools.
+  - Elective *slots* ("CS-xxx Domain Elective-1") aren't courses, so they
+    aren't listed. Each elective course is offered in the semesters where its
+    slots fall; for example, BSCS electives 3–5 can run in semester 7 or 8.
+  - BSAI's Thesis I/II is marked as an alternative to its Final Year Project.
+  - **BS Data Science has no document yet and uses the BSCS catalog**
+    (`CURRICULUM_SOURCE`), so its codes stay `CS-…` until a BSDS scheme exists.
+  - Two document quirks are corrected and commented in code: the stray
+    footnote in "2SE-655", and BSCS Digital Logic Design printed as "4 (2+1)"
+    (the computing-core table gives 4 (3+1)).
+- **Reference data only.** Nothing is written to the database and there is no
+  migration. A course row is still created per faculty member when they teach
+  it, through the unchanged `POST /api/v1/courses`.
+- **API:** `GET /api/v1/curriculum/{program_id}` (faculty and sub-admin;
+  sub-admins are scoped to their own department).
+- **UI:** the New Course dialog has "From curriculum" and "Manual entry" tabs.
+  - From curriculum: pick a semester (each shows its course count) or search
+    across all semesters, then select a course. Electives show their pool,
+    courses you have already added are greyed out, and electives that can run
+    in two semesters let you choose which.
+  - Manual entry is the original form, for anything off-catalog, such as a
+    Topic of Current Interest or a retake. Editing a course is unchanged.
+- The assistant's "Creating a course" help article was updated to match.
+- **Tests:** `test_curriculum.py` checks fidelity: every semester's planned
+  credits plus elective slots must equal the document's printed "Total Credits
+  for Semester" line (all 24 match). It also checks unique, correctly-prefixed
+  codes, valid semesters and credit splits, BSDS falling back to BSCS, and the
+  API's access rules.
+
 ## 2026-11-01 — AdaptOBE Assistant (chatbot), designed against prompt injection
 
 A chat assistant available to every signed-in role, from a floating button on

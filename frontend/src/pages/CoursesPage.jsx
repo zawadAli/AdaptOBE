@@ -16,8 +16,15 @@ import Input from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Modal, { ModalFooter } from '../components/ui/Modal'
 import Spinner from '../components/ui/Spinner'
+import Tabs from '../components/ui/Tabs'
 import EmptyState from '../components/ui/EmptyState'
 import { Card, CardBody } from '../components/ui/Card'
+import CurriculumPicker from './course/CurriculumPicker'
+
+const SOURCE_TABS = [
+  { value: 'catalog', label: 'From curriculum' },
+  { value: 'manual', label: 'Manual entry' },
+]
 
 export default function CoursesPage() {
   const { user } = useAuth()
@@ -147,8 +154,12 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
   const [name, setName] = useState('')
   const [creditHours, setCreditHours] = useState('3')
   const [semester, setSemester] = useState('1')
+  // New courses default to picking from the curriculum; editing is always manual.
+  const [source, setSource] = useState('catalog')
+  const [pick, setPick] = useState(null) // { course, semester } from CurriculumPicker
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const fromCatalog = mode === 'create' && source === 'catalog'
 
   useEffect(() => {
     if (isOpen) {
@@ -168,6 +179,8 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
       setName(course?.name ?? '')
       setCreditHours(course ? String(course.credit_hours) : '3')
       setSemester(course ? String(course.semester) : '1')
+      setSource('catalog')
+      setPick(null)
       setError('')
     }
   }, [isOpen, course])
@@ -176,12 +189,32 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
     e.preventDefault()
     setError('')
 
+    if (fromCatalog && !pick) {
+      setError('Pick a course from the list, or switch to Manual entry.')
+      return
+    }
+    const data = fromCatalog
+      ? {
+          program_id: Number(programId),
+          code: pick.course.code,
+          name: pick.course.name,
+          credit_hours: pick.course.credit_hours,
+          semester: pick.semester,
+        }
+      : {
+          program_id: Number(programId),
+          code,
+          name,
+          credit_hours: Number(creditHours),
+          semester: Number(semester),
+        }
+
     const duplicate = existingCourses.find(
       (c) =>
         c.id !== course?.id &&
-        String(c.program_id) === programId &&
-        c.code.trim().toLowerCase() === code.trim().toLowerCase() &&
-        String(c.semester) === semester,
+        c.program_id === data.program_id &&
+        c.code.trim().toLowerCase() === data.code.trim().toLowerCase() &&
+        c.semester === data.semester,
     )
     if (duplicate) {
       setError('A course with this code already exists for this programme and semester.')
@@ -190,13 +223,6 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
 
     setIsSubmitting(true)
     try {
-      const data = {
-        program_id: Number(programId),
-        code,
-        name,
-        credit_hours: Number(creditHours),
-        semester: Number(semester),
-      }
       if (mode === 'edit') {
         await updateCourse(course.id, data)
       } else {
@@ -212,7 +238,12 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={mode === 'edit' ? 'Edit Course' : 'New Course'}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === 'edit' ? 'Edit Course' : 'New Course'}
+      width={mode === 'create' ? 'max-w-2xl' : 'max-w-lg'}
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Select label="Programme" value={programId} onChange={(e) => setProgramId(e.target.value)}>
           {programs.map((program) => (
@@ -221,45 +252,69 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
             </option>
           ))}
         </Select>
-        <Input
-          label="Course Code"
-          placeholder="SE-301"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          required
-        />
-        <Input
-          label="Course Name"
-          placeholder="Software Design & Architecture"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Credit Hours"
-            type="number"
-            min="1"
-            value={creditHours}
-            onChange={(e) => setCreditHours(e.target.value)}
-            required
+
+        {mode === 'create' && <Tabs tabs={SOURCE_TABS} active={source} onChange={setSource} />}
+
+        {fromCatalog ? (
+          <CurriculumPicker
+            programId={programId}
+            existingCourses={existingCourses}
+            value={pick}
+            onChange={setPick}
+            onUseManual={() => setSource('manual')}
           />
-          <Input
-            label="Semester"
-            type="number"
-            min="1"
-            value={semester}
-            onChange={(e) => setSemester(e.target.value)}
-            required
-          />
-        </div>
+        ) : (
+          <>
+            <Input
+              label="Course Code"
+              placeholder="SE-301"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+            />
+            <Input
+              label="Course Name"
+              placeholder="Software Design & Architecture"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Credit Hours"
+                type="number"
+                min="1"
+                value={creditHours}
+                onChange={(e) => setCreditHours(e.target.value)}
+                required
+              />
+              <Input
+                label="Semester"
+                type="number"
+                min="1"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+                required
+              />
+            </div>
+          </>
+        )}
+
         {error && <p className="text-sm text-danger-600 bg-danger-50 rounded-lg px-3 py-2">{error}</p>}
         <ModalFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={isSubmitting} disabled={programs.length === 0}>
-            {mode === 'edit' ? 'Save' : 'Create'}
+          <Button
+            type="submit"
+            isLoading={isSubmitting}
+            disabled={programs.length === 0 || (fromCatalog && !pick)}
+          >
+            {mode === 'edit'
+              ? 'Save'
+              : fromCatalog && pick
+                ? `Create ${pick.course.code}`
+                : 'Create'}
           </Button>
         </ModalFooter>
       </form>

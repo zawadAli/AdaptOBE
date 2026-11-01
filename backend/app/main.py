@@ -15,6 +15,7 @@ from app.routers import (
     auth,
     chat,
     courses,
+    curriculum,
     departments,
     enrollments,
     mappings,
@@ -61,6 +62,7 @@ app.include_router(programs.router)
 app.include_router(plos.router)
 app.include_router(courses.router)
 app.include_router(courses.clo_router)
+app.include_router(curriculum.router)
 app.include_router(enrollments.router)
 app.include_router(mappings.router)
 app.include_router(assessments.router)

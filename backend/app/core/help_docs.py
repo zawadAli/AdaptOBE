@@ -97,10 +97,15 @@ HELP_ARTICLES: tuple[HelpArticle, ...] = (
     # ---- Faculty ------------------------------------------------------------
     HelpArticle(
         "faculty-course", "Creating a course", FACULTY,
-        "Go to Courses and click '+ New Course'. Choose the programme, code, name, "
-        "credit hours and semester. The same code may repeat in a different "
-        "programme or semester, but not the exact same combination. Open a course "
-        "to reach its tabs: CLOs & Mappings, Enrollments, Assessments and Attendance.",
+        "Go to Courses and click '+ New Course', then choose the programme. On the "
+        "'From curriculum' tab, pick a semester (or search all semesters) and select "
+        "the course from the department's scheme of studies; code, name and credit "
+        "hours are filled in for you, and electives can be offered in any semester "
+        "their slot allows. BS Data Science uses the BSCS curriculum for now. For "
+        "anything not in the curriculum, use the 'Manual entry' tab. The same code "
+        "may repeat in a different programme or semester, but not the exact same "
+        "combination. Open a course to reach its tabs: CLOs & Mappings, Enrollments, "
+        "Assessments and Attendance.",
     ),
     HelpArticle(
         "faculty-clos", "Adding CLOs (manually or with AI)", FACULTY,
