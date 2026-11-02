@@ -20,6 +20,8 @@ import Tabs from '../components/ui/Tabs'
 import EmptyState from '../components/ui/EmptyState'
 import { Card, CardBody } from '../components/ui/Card'
 import CurriculumPicker from './course/CurriculumPicker'
+import { codeKey } from '../utils/courseCode'
+import { importCourseCurriculumClos } from '../api/curriculum'
 
 const SOURCE_TABS = [
   { value: 'catalog', label: 'From curriculum' },
@@ -131,7 +133,10 @@ export default function CoursesPage() {
       <CourseModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSaved={load}
+        onSaved={(warning) => {
+          setError(warning || '')
+          load()
+        }}
         mode="create"
         existingCourses={courses ?? []}
       />
@@ -157,6 +162,7 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
   // New courses default to picking from the curriculum; editing is always manual.
   const [source, setSource] = useState('catalog')
   const [pick, setPick] = useState(null) // { course, semester } from CurriculumPicker
+  const [withClos, setWithClos] = useState(true) // also add the curriculum's CLOs
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fromCatalog = mode === 'create' && source === 'catalog'
@@ -181,6 +187,7 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
       setSemester(course ? String(course.semester) : '1')
       setSource('catalog')
       setPick(null)
+      setWithClos(true)
       setError('')
     }
   }, [isOpen, course])
@@ -213,7 +220,7 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
       (c) =>
         c.id !== course?.id &&
         c.program_id === data.program_id &&
-        c.code.trim().toLowerCase() === data.code.trim().toLowerCase() &&
+        codeKey(c.code) === codeKey(data.code) &&
         c.semester === data.semester,
     )
     if (duplicate) {
@@ -223,13 +230,22 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
 
     setIsSubmitting(true)
     try {
+      let warning = ''
       if (mode === 'edit') {
         await updateCourse(course.id, data)
       } else {
-        await createCourse(data)
+        const created = await createCourse(data)
+        if (fromCatalog && withClos && pick.course.clo_count > 0) {
+          try {
+            await importCourseCurriculumClos(created.id)
+          } catch {
+            // The course exists either way; the CLOs tab offers the same import.
+            warning = `${created.code} was created, but its curriculum CLOs couldn't be added. Open the course and use "Add from curriculum" on the CLOs tab.`
+          }
+        }
       }
       onClose()
-      onSaved()
+      onSaved(warning)
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : 'Something went wrong.')
     } finally {
@@ -255,15 +271,34 @@ function CourseModal({ isOpen, onClose, onSaved, mode, course, existingCourses =
 
         {mode === 'create' && <Tabs tabs={SOURCE_TABS} active={source} onChange={setSource} />}
 
-        {fromCatalog ? (
+        {fromCatalog && (
           <CurriculumPicker
             programId={programId}
-            existingCourses={existingCourses}
             value={pick}
             onChange={setPick}
             onUseManual={() => setSource('manual')}
           />
-        ) : (
+        )}
+
+        {fromCatalog && pick && pick.course.clo_count > 0 && (
+          <label className="flex items-start gap-2 text-sm text-ink-700 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-border-strong text-brand-600 focus:ring-brand-500"
+              checked={withClos}
+              onChange={(e) => setWithClos(e.target.checked)}
+            />
+            <span>
+              Also add its {pick.course.clo_count} CLO{pick.course.clo_count === 1 ? '' : 's'} from the
+              curriculum
+              <span className="block text-xs text-ink-500">
+                You can edit them, add your own, and map them to PLOs yourself on the course&apos;s CLOs tab.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {!fromCatalog && (
           <>
             <Input
               label="Course Code"

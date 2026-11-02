@@ -108,12 +108,15 @@ HELP_ARTICLES: tuple[HelpArticle, ...] = (
         "Assessments and Attendance.",
     ),
     HelpArticle(
-        "faculty-clos", "Adding CLOs (manually or with AI)", FACULTY,
-        "In a course, open the 'CLOs & Mappings' tab. '+ Add CLO' lets you type the "
-        "code, title, description and Bloom level. 'Create CLO with AI' drafts the "
-        "wording for you from a topic and the PLOs it should support; review it "
-        "before saving. CLOs can be edited, deleted and reordered by dragging the "
-        "grip handle.",
+        "faculty-clos", "Adding CLOs (from the curriculum, manually or with AI)", FACULTY,
+        "In a course, open the 'CLOs & Mappings' tab. A course created from the "
+        "curriculum comes with the CLOs its curriculum document lists (untick 'Also "
+        "add its CLOs' when creating to skip that); 'Add from curriculum' adds any "
+        "that are missing and lets you pick which. '+ Add CLO' lets you type the "
+        "code, title, description and Bloom level yourself, and 'Create CLO with AI' "
+        "drafts the wording from a topic and the PLOs it should support. CLOs are "
+        "never mapped to PLOs automatically: use 'Map to PLOs' on each one. CLOs can "
+        "be edited, deleted and reordered by dragging the grip handle.",
     ),
     HelpArticle(
         "faculty-mapping", "Mapping CLOs to PLOs", FACULTY,

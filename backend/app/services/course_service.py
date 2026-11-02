@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +86,14 @@ async def create_course(db: AsyncSession, data: CourseCreate, owner: User) -> Co
     return course
 
 
+def code_key(code: str) -> str:
+    """Canonical form of a course code: 'CS-351', 'cs351' and 'CS 351' are the
+    same course. Every "is this the same course code?" decision in the app --
+    duplicate prevention, the curriculum picker, the assistant's course
+    lookups -- goes through this one function so they can't disagree."""
+    return re.sub(r"[^a-z0-9]", "", code.lower())
+
+
 async def _ensure_unique_offering(
     db: AsyncSession,
     program_id: int,
@@ -92,21 +102,25 @@ async def _ensure_unique_offering(
     exclude_course_id: int | None = None,
 ) -> None:
     """Enforce the (program, code, semester) uniqueness rule ahead of the
-    commit, so the error message can name the actual conflict rather than
-    relying solely on the DB constraint (which still backstops races)."""
-    stmt = select(Course).where(
+    commit, so the error message can name the actual conflict.
+
+    Codes are compared by `code_key`, so a hand-typed 'cs351' can't sneak in as
+    a second copy of catalog course 'CS-351'. The DB constraint (exact-match)
+    still backstops races on identical spellings."""
+    stmt = select(Course, User.full_name).join(User, User.id == Course.owner_faculty_id).where(
         Course.program_id == program_id,
-        Course.code == code,
         Course.semester == semester,
     )
     if exclude_course_id is not None:
         stmt = stmt.where(Course.id != exclude_course_id)
 
-    existing = (await db.execute(stmt)).scalar_one_or_none()
-    if existing is not None:
-        raise ConflictError(
-            "A course with this code already exists for this programme and semester"
-        )
+    key = code_key(code)
+    for existing, owner_name in (await db.execute(stmt)).all():
+        if code_key(existing.code) == key:
+            raise ConflictError(
+                "A course with this code already exists for this programme and semester "
+                f"({existing.code}, taught by {owner_name})"
+            )
 
 
 async def update_course(

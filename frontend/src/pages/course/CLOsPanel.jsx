@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DndContext, closestCenter } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { createClo, deleteClo, listClos, updateClo } from '../../api/clos'
+import { getCourseCurriculumClos } from '../../api/curriculum'
 import { ApiError } from '../../api/client'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -17,6 +18,7 @@ import useLocalOrder from '../../hooks/useLocalOrder'
 import useDndSensors from '../../hooks/useDndSensors'
 import MappingModal from './MappingModal'
 import AiCloModal from './AiCloModal'
+import CurriculumClosModal from './CurriculumClosModal'
 
 //: Standard Bloom's Taxonomy (cognitive domain) levels -- must match
 //: `BLOOM_LEVELS` in `backend/app/schemas/clo.py`.
@@ -28,13 +30,23 @@ export default function CLOsPanel({ course }) {
   const [isAiCreateOpen, setIsAiCreateOpen] = useState(false)
   const [editingClo, setEditingClo] = useState(null)
   const [mappingClo, setMappingClo] = useState(null)
+  const [curriculum, setCurriculum] = useState(null) // CLOs the curriculum document lists
+  const [isCurriculumOpen, setIsCurriculumOpen] = useState(false)
   const [error, setError] = useState('')
 
   const { applyOrder, reorder } = useLocalOrder(`adaptobe.clo-order.${course.id}`)
   const sensors = useDndSensors()
   const orderedClos = clos ? applyOrder(clos) : clos
+  const pendingCurriculum = curriculum?.clos.filter((c) => !c.already_added).length ?? 0
 
-  const load = () => listClos(course.id).then(setClos)
+  // The curriculum list's "already added" flags depend on the course's CLOs,
+  // so both are refreshed together after any change.
+  const load = () => {
+    listClos(course.id).then(setClos)
+    getCourseCurriculumClos(course.id)
+      .then(setCurriculum)
+      .catch(() => setCurriculum(null)) // the curriculum option is a convenience, never a blocker
+  }
 
   useEffect(() => {
     load()
@@ -63,6 +75,11 @@ export default function CLOsPanel({ course }) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p className="text-sm text-ink-500">Course Learning Outcomes for {course.code}.</p>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          {pendingCurriculum > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => setIsCurriculumOpen(true)}>
+              Add from curriculum ({pendingCurriculum})
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={() => setIsAiCreateOpen(true)}>
             Create CLO with AI
           </Button>
@@ -83,7 +100,11 @@ export default function CLOsPanel({ course }) {
       ) : clos.length === 0 ? (
         <EmptyState
           title="No CLOs yet"
-          description="Add a CLO, then map it to Programme Learning Outcomes using AI-suggested matches."
+          description={
+            pendingCurriculum > 0
+              ? `The curriculum lists ${pendingCurriculum} CLO${pendingCurriculum === 1 ? '' : 's'} for this course — use "Add from curriculum", or add your own. Then map each to PLOs.`
+              : 'Add a CLO, then map it to Programme Learning Outcomes using AI-suggested matches.'
+          }
         />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -160,6 +181,14 @@ export default function CLOsPanel({ course }) {
         onClose={() => setIsAiCreateOpen(false)}
         onSaved={load}
         course={course}
+      />
+
+      <CurriculumClosModal
+        isOpen={isCurriculumOpen}
+        onClose={() => setIsCurriculumOpen(false)}
+        course={course}
+        curriculum={curriculum}
+        onImported={load}
       />
     </div>
   )

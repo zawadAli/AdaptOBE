@@ -4,6 +4,87 @@ All notable changes to AdaptOBE are recorded here, most recent first. Each
 entry is a short summary of what changed, not a full diff — see git history
 for that.
 
+## 2026-11-02 — Curriculum CLOs added to courses (mapping stays manual)
+
+Courses created from the curriculum now come with the CLOs their curriculum
+document lists. Manual "+ Add CLO" and "Create CLO with AI" are unchanged, and
+**CLO→PLO mapping is never automated**: every imported CLO still goes through
+"Map to PLOs" by the faculty.
+
+- **Data** (`app/core/curriculum_clos.py`): 464 CLOs for 109 catalog courses
+  (BSCS 194 / 44 courses, BSSE 120 / 30, BSAI 150 / 35), extracted from the
+  "Course Learning Outcomes" section of each outline in the three curriculum
+  PDFs and reviewed.
+  - The statement is kept verbatim as the CLO description. Only list
+    numbering, "By the end of this course…" lead-ins and "To …" infinitives
+    are removed.
+  - The title is a short label from the statement with the leading action
+    verb dropped. Labelled statements like "Understand Civic
+    Responsibilities: …" use the label.
+  - The Bloom level is inferred from the action verb (Describe → Understand,
+    Design → Create, …). Faculty can edit all three afterwards.
+  - Not invented: outlines with an empty CLO section, or only "As per
+    guidelines of NCEAC and HEC", get no CLOs.
+  - Outlines printed under a code belonging to a different course are never
+    attached to the wrong course; they are matched by name or left out.
+    Examples: "Technical and Business Writing (SE-557)" (SE-557 is Theory of
+    Automata) and "Introduction to Management (CS-462)".
+  - BSDS uses the BSCS CLOs, like its catalog.
+- **API** (faculty / sub-admin, same ownership rule as the CLO endpoints):
+  - `GET /api/v1/courses/{id}/curriculum-clos` previews the curriculum CLOs
+    and flags ones the course already has.
+  - `POST /api/v1/courses/{id}/curriculum-clos/import` (optional `indices`)
+    creates them through the normal `clo_service.create_clo`, so embeddings
+    exist for manual mapping.
+  - The import is idempotent: a statement already in the course is skipped.
+  - It keeps the document's numbering (CLO-2 stays CLO-2) unless that code is
+    taken, then uses the next free CLO-n.
+  - It creates no `clo_plo_mappings`.
+- **UI:**
+  - The curriculum picker shows each course's CLO count.
+  - New Course has an "Also add its N CLOs from the curriculum" checkbox,
+    ticked by default.
+  - The CLOs tab gains "Add from curriculum (N)", shown only when some are
+    missing. It opens a checklist where existing ones are marked "Added".
+  - If the import fails after a course is created, the course is kept and a
+    message points to that button.
+  - The catalog API gains `clo_count`.
+- The assistant's CLO help article was updated.
+- **Tests:** `test_curriculum_clos.py` covers data integrity (every entry is
+  a catalog course, valid Bloom levels, no placeholders), preview, import
+  numbering, no mappings created, idempotency, subset import, manual-code
+  clashes, re-spelled course codes, bad indices, courses without curriculum
+  CLOs, and access rules. It was also verified live: create → 3 CLOs present
+  and unmapped → delete one → "Add from curriculum (1)" restores it as CLO-2.
+
+## 2026-11-01 — Duplicate courses caught regardless of spelling or owner
+
+Two gaps in the one-course-per-(programme, code, semester) rule:
+
+- **Re-spelled codes slipped through.** The duplicate check compared codes
+  exactly, so typing `cs351` or `CS 351` by hand created a second copy of
+  catalog course `CS-351`. Codes are now compared by
+  `course_service.code_key()`, which ignores case and non-alphanumerics, on
+  both create and edit. This is now the app's single definition of "same
+  code"; the assistant's course lookups use it too, replacing
+  `chat_guard.course_code_key`. The 409 message also names the clashing
+  course and its teacher, e.g. "(SE-458, taught by Ms. Madiha Khurram)". The
+  exact-match DB constraint is unchanged and still backstops races.
+- **The picker only knew about your own courses.** A course another teacher
+  already offered looked selectable until Create returned a 409. The
+  curriculum API now returns each catalog entry's `offerings` in the
+  programme (semester, owner name, `is_mine`), matched with the same
+  `code_key`. The picker shows "Already added" or "Taught by …" and disables
+  that semester; for two-semester electives only the taken semester is
+  blocked. Faculty could already list every course through
+  `GET /api/v1/courses`, so this exposes nothing new.
+- Frontend form pre-check uses the matching `utils/courseCode.js`.
+- Tests: re-spellings rejected on create and edit (including when another
+  faculty owns the original), a different semester is still allowed, and
+  offerings report mine vs. another teacher, including a differently-spelled
+  hand-typed code. Verified live: picker states for the owner and a
+  sub-admin, form rejection, and a direct API bypass attempt (409).
+
 ## 2026-11-01 — Hardcoded curriculum catalog for course creation
 
 "+ New Course" now defaults to picking from the department's scheme of studies

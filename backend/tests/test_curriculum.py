@@ -93,10 +93,13 @@ async def test_faculty_gets_bsds_catalog_from_bscs(client, db_session, departmen
     assert body["source_program_code"] == "BSCS"
     assert len(body["courses"]) == len(curriculum.BSCS)
     first = body["courses"][0]
+    # Offerings depend on whatever real courses the dev DB holds; covered by
+    # the dedicated offering tests below.
+    assert isinstance(first.pop("offerings"), list)
     assert first == {
         "code": "CS-351", "name": "Programming Fundamentals", "credit_hours": 4,
         "breakdown": "3+1", "semesters": [1], "category": "core", "group": None,
-        "alternative_to": None,
+        "alternative_to": None, "clo_count": 3,
     }
 
 
@@ -149,3 +152,38 @@ async def test_sub_admin_scoped_to_own_department(client, db_session, sub_admin)
 async def test_unknown_programme_is_404(client, faculty):
     resp = await client.get("/api/v1/curriculum/999999999", headers=auth_header(faculty))
     assert resp.status_code == 404
+
+
+# ---- Offerings: who already teaches each catalog course ----------------------
+
+async def test_offerings_show_mine_and_other_faculty(client, db_session, department, faculty, make_user):
+    """Semesters 2 and 3 are deliberately off-catalog for these codes, so a real
+    AI-555 / AI-674 offering in the dev DB can't collide with this test."""
+    from app.schemas.course import CourseCreate
+    from app.services import course_service
+
+    bsai = await _program(db_session, department, "BSAI")
+    other = await make_user(
+        "offer.other@adaptobe.edu", full_name="Dr. Other Teacher",
+        role=UserRole.faculty, employee_id="FAC-OFFER",
+    )
+    await course_service.create_course(
+        db_session,
+        CourseCreate(program_id=bsai.id, code="AI-555", name="Machine Learning", credit_hours=3, semester=2),
+        faculty,
+    )
+    # Hand-typed, differently-spelled code still matches the catalog entry.
+    await course_service.create_course(
+        db_session,
+        CourseCreate(program_id=bsai.id, code="ai 674", name="Data Warehousing", credit_hours=3, semester=3),
+        other,
+    )
+
+    resp = await client.get(f"/api/v1/curriculum/{bsai.id}", headers=auth_header(faculty))
+    by_code = {c["code"]: c for c in resp.json()["courses"]}
+
+    mine = next(o for o in by_code["AI-555"]["offerings"] if o["semester"] == 2)
+    assert mine == {"semester": 2, "owner_name": faculty.full_name, "is_mine": True}
+
+    theirs = next(o for o in by_code["AI-674"]["offerings"] if o["semester"] == 3)
+    assert theirs == {"semester": 3, "owner_name": "Dr. Other Teacher", "is_mine": False}

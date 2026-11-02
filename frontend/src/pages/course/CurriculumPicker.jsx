@@ -7,10 +7,17 @@ import Spinner from '../../components/ui/Spinner'
 
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8]
 
+// The existing offering (by anyone in the programme) of `course` in semester `s`.
+// Comes from the server, which matches codes the same way its duplicate check
+// does, so a taken slot here is exactly one the server would reject.
+const takenIn = (course, s) => course.offerings.find((o) => o.semester === s)
+const offeringLabel = (o) => (o.is_mine ? 'Already added' : `Taught by ${o.owner_name}`)
+const freeSemesters = (course) => course.semesters.filter((s) => !takenIn(course, s))
+
 // Pick a course from the programme's hardcoded curriculum (app/core/curriculum.py).
 // `value` / `onChange` carry `{ course, semester }` -- the catalog entry plus the
 // semester it will be offered in (electives can sit in more than one semester).
-export default function CurriculumPicker({ programId, existingCourses, value, onChange, onUseManual }) {
+export default function CurriculumPicker({ programId, value, onChange, onUseManual }) {
   const [catalog, setCatalog] = useState(null)
   const [semester, setSemester] = useState(1)
   const [search, setSearch] = useState('')
@@ -35,18 +42,19 @@ export default function CurriculumPicker({ programId, existingCourses, value, on
 
   const countFor = (s) => courses.filter((c) => c.semesters.includes(s)).length
 
-  function alreadyAdded(course, sem) {
-    return existingCourses.some(
-      (c) =>
-        String(c.program_id) === String(programId) &&
-        c.code.trim().toLowerCase() === course.code.toLowerCase() &&
-        c.semester === sem,
-    )
-  }
-
-  function pick(course) {
-    const sem = !query && course.semesters.includes(semester) ? semester : course.semesters[0]
-    onChange({ course, semester: sem })
+  // In semester view a row is about that one semester; in search view it's
+  // available while any of its catalog semesters is still free.
+  function rowState(course) {
+    if (!query) {
+      const offering = takenIn(course, semester)
+      return { disabled: !!offering, sem: semester, notes: offering ? [offeringLabel(offering)] : [] }
+    }
+    const free = freeSemesters(course)
+    const notes = course.semesters
+      .map((s) => takenIn(course, s))
+      .filter(Boolean)
+      .map((o) => `Sem ${o.semester}: ${offeringLabel(o)}`)
+    return { disabled: free.length === 0, sem: free[0], notes }
   }
 
   if (catalog === null) {
@@ -109,14 +117,13 @@ export default function CurriculumPicker({ programId, existingCourses, value, on
           <p className="px-3 py-4 text-sm text-ink-500">No courses match that search.</p>
         )}
         {visible.map((course) => {
-          const sem = !query && course.semesters.includes(semester) ? semester : course.semesters[0]
-          const added = alreadyAdded(course, sem)
+          const { disabled, sem, notes } = rowState(course)
           const isSelected = selected?.code === course.code
           return (
             <label
               key={course.code}
               className={`flex items-start gap-3 px-3 py-2.5 text-sm ${
-                added ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'
+                disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'
               } ${isSelected ? 'bg-brand-50' : ''}`}
             >
               <input
@@ -124,8 +131,8 @@ export default function CurriculumPicker({ programId, existingCourses, value, on
                 name="catalog-course"
                 className="mt-0.5 h-4 w-4 text-brand-600 focus:ring-brand-500"
                 checked={isSelected}
-                disabled={added}
-                onChange={() => pick(course)}
+                disabled={disabled}
+                onChange={() => onChange({ course, semester: sem })}
               />
               <span className="flex-1 min-w-0">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -138,7 +145,16 @@ export default function CurriculumPicker({ programId, existingCourses, value, on
                   {query && (
                     <span className="text-xs text-ink-500">Semester {course.semesters.join(' / ')}</span>
                   )}
-                  {added && <span className="text-xs text-ink-500">Already added</span>}
+                  {course.clo_count > 0 && (
+                    <span className="text-xs text-ink-500">
+                      {course.clo_count} CLO{course.clo_count === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {notes.map((note) => (
+                    <span key={note} className="text-xs text-ink-500">
+                      {note}
+                    </span>
+                  ))}
                 </span>
               </span>
               <span className="text-xs text-ink-500 whitespace-nowrap">
@@ -157,11 +173,15 @@ export default function CurriculumPicker({ programId, existingCourses, value, on
             onChange={(e) => onChange({ course: selected, semester: Number(e.target.value) })}
             className="w-32"
           >
-            {selected.semesters.map((s) => (
-              <option key={s} value={s}>
-                Semester {s}
-              </option>
-            ))}
+            {selected.semesters.map((s) => {
+              const offering = takenIn(selected, s)
+              return (
+                <option key={s} value={s} disabled={!!offering}>
+                  Semester {s}
+                  {offering ? ` (${offeringLabel(offering)})` : ''}
+                </option>
+              )
+            })}
           </Select>
         </div>
       )}

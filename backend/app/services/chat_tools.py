@@ -37,7 +37,7 @@ from app.services import (
     risk_service,
     student_service,
 )
-from app.services.chat_guard import clean_course_code, course_code_key
+from app.services.chat_guard import clean_course_code
 from app.services.exceptions import NotFoundError, PermissionDeniedError
 
 logger = logging.getLogger(__name__)
@@ -101,9 +101,9 @@ async def _resolve_course(db: AsyncSession, user: User, args: dict) -> Course:
     if code is None:
         raise ToolError("Please give a valid course code, e.g. 'SE-301'.")
 
-    key = course_code_key(code)
+    key = course_service.code_key(code)
     courses = await _own_courses(db, user)
-    matches = [course for course in courses if course_code_key(course.code) == key]
+    matches = [course for course in courses if course_service.code_key(course.code) == key]
     if not matches:
         available = ", ".join(sorted({course.code for course in courses})) or "none"
         raise ToolError(f"No course '{code}' among your courses. Your courses: {available}.")

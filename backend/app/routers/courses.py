@@ -7,7 +7,12 @@ from app.models.user import User, UserRole
 from app.schemas.clo import CLOCreate, CLORead, CLOUpdate
 from app.schemas.clo_generation import GenerateCloRequest, GenerateCloResponse
 from app.schemas.course import CourseCreate, CourseRead, CourseUpdate
-from app.services import clo_service, course_service
+from app.schemas.curriculum import (
+    CourseCurriculumClos,
+    ImportCurriculumClosRequest,
+    ImportCurriculumClosResponse,
+)
+from app.services import clo_service, course_service, curriculum_service
 from app.services.exceptions import (
     ConflictError,
     LLMGenerationError,
@@ -129,6 +134,39 @@ async def create_clo(
         raise _not_found(exc) from exc
     except PermissionDeniedError as exc:
         raise _forbidden(exc) from exc
+
+
+@router.get("/{course_id}/curriculum-clos", response_model=CourseCurriculumClos)
+async def curriculum_clos(
+    course_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = FacultyOrSubAdmin,
+):
+    """The CLOs the curriculum document lists for this course, flagging any the
+    course already has. Writes nothing."""
+    try:
+        return await curriculum_service.get_course_clos(db, course_id, current_user)
+    except NotFoundError as exc:
+        raise _not_found(exc) from exc
+    except PermissionDeniedError as exc:
+        raise _forbidden(exc) from exc
+
+
+@router.post("/{course_id}/curriculum-clos/import", response_model=ImportCurriculumClosResponse)
+async def import_curriculum_clos(
+    course_id: int,
+    data: ImportCurriculumClosRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = FacultyOrSubAdmin,
+):
+    try:
+        return await curriculum_service.import_course_clos(db, course_id, data, current_user)
+    except NotFoundError as exc:
+        raise _not_found(exc) from exc
+    except PermissionDeniedError as exc:
+        raise _forbidden(exc) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.post("/{course_id}/clos/generate", response_model=GenerateCloResponse)

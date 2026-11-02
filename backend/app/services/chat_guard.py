@@ -79,11 +79,6 @@ def clean_course_code(raw) -> str | None:
     return value
 
 
-def course_code_key(code: str) -> str:
-    """Comparison key so 'se301', 'SE-301' and 'SE 301' all match."""
-    return re.sub(r"[^a-z0-9]", "", code.lower())
-
-
 def wrap_untrusted(label: str, text: str) -> str:
     """Fence text that came from the DB / help corpus / a tool.
 

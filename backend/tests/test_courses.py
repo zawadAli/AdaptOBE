@@ -210,3 +210,63 @@ async def test_list_mine_filters_to_owned_courses(client, make_user, faculty, co
 async def test_get_course_not_found(client, faculty):
     resp = await client.get("/api/v1/courses/999999", headers=auth_header(faculty))
     assert resp.status_code == 404
+
+
+# ---- Duplicate detection ignores case, dashes and spaces ---------------------
+
+def test_code_key_normalises_spelling():
+    from app.services.course_service import code_key
+
+    assert code_key("CS-351") == code_key("cs351") == code_key("CS 351") == code_key("cs_351")
+    assert code_key("CS-351") != code_key("CS-352")
+
+
+async def test_respelled_code_is_still_a_duplicate(client, faculty, program, course):
+    """'cs101' / 'CS 101' can't sneak in as a second copy of 'CS-101'."""
+    for spelling in ("cs101", "CS 101", "cs-101", "Cs_101"):
+        resp = await client.post(
+            "/api/v1/courses",
+            json={"program_id": program.id, "code": spelling, "name": "Sneaky",
+                  "credit_hours": 3, "semester": course.semester},
+            headers=auth_header(faculty),
+        )
+        assert resp.status_code == 409, spelling
+        # The message names the existing course and who teaches it.
+        assert course.code in resp.json()["detail"]
+        assert faculty.full_name in resp.json()["detail"]
+
+
+async def test_duplicate_owned_by_another_faculty_is_blocked(client, make_user, program, course):
+    other = await make_user("dup.other@adaptobe.edu", role=UserRole.faculty, employee_id="FAC-DUP")
+    resp = await client.post(
+        "/api/v1/courses",
+        json={"program_id": program.id, "code": "cs-101", "name": "Mine Too",
+              "credit_hours": 3, "semester": course.semester},
+        headers=auth_header(other),
+    )
+    assert resp.status_code == 409
+
+
+async def test_respelled_code_in_another_semester_is_allowed(client, faculty, program, course):
+    resp = await client.post(
+        "/api/v1/courses",
+        json={"program_id": program.id, "code": "cs101", "name": "Retake",
+              "credit_hours": 3, "semester": course.semester + 1},
+        headers=auth_header(faculty),
+    )
+    assert resp.status_code == 201
+
+
+async def test_editing_into_a_respelled_duplicate_is_blocked(client, faculty, program, course):
+    created = await client.post(
+        "/api/v1/courses",
+        json={"program_id": program.id, "code": "CS-202", "name": "Other",
+              "credit_hours": 3, "semester": course.semester},
+        headers=auth_header(faculty),
+    )
+    resp = await client.patch(
+        f"/api/v1/courses/{created.json()['id']}",
+        json={"code": "cs 101"},
+        headers=auth_header(faculty),
+    )
+    assert resp.status_code == 409
